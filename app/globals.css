@@ -1,0 +1,160 @@
+* { box-sizing: border-box; }
+html, body { padding: 0; margin: 0; font-family: Arial, Helvetica, sans-serif; }
+body {
+  background: #0a0a0a;
+  color: #f4f4f5;
+}
+a { color: inherit; text-decoration: none; }
+button, input, textarea { font: inherit; }
+textarea { resize: vertical; }
+.page {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #1c1c24 0%, #09090b 45%, #050507 100%);
+}
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.card {
+  background: rgba(24,24,27,0.84);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 28px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.22);
+}
+.header-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.75fr;
+  gap: 16px;
+}
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.grid-2-1 {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 16px;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.p-5 { padding: 20px; }
+.p-6 { padding: 24px; }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+.mt-3 { margin-top: 12px; }
+.mt-4 { margin-top: 16px; }
+.mt-5 { margin-top: 20px; }
+.mt-8 { margin-top: 32px; }
+.flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.gap-5 { gap: 20px; }
+.w-full { width: 100%; }
+.text-sm { font-size: 14px; }
+.text-xs { font-size: 12px; }
+.text-lg { font-size: 20px; }
+.text-xl { font-size: 24px; }
+.text-2xl { font-size: 30px; }
+.text-3xl { font-size: 40px; }
+.text-6xl { font-size: 72px; }
+.font-bold { font-weight: 700; }
+.font-black { font-weight: 900; }
+.muted { color: #a1a1aa; }
+.title { line-height: 1.1; }
+.progress-wrap {
+  height: 14px;
+  background: #27272a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #fafafa, #d4d4d8);
+  border-radius: 999px;
+  transition: width .3s ease;
+}
+.stat-value { font-size: 34px; font-weight: 800; }
+.btn {
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  color: #fafafa;
+  cursor: pointer;
+  transition: .2s ease;
+}
+.btn:hover { transform: translateY(-1px); background: rgba(255,255,255,0.06); }
+.btn-primary {
+  background: #fafafa;
+  color: #09090b;
+  border-color: #fafafa;
+  font-weight: 700;
+}
+.btn-soft {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.14);
+  color: #fcd34d;
+}
+.btn-danger:hover { background: rgba(239,68,68,0.12); color: #f87171; }
+.input, .textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.03);
+  color: #fafafa;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 18px;
+  padding: 14px 16px;
+  outline: none;
+}
+.input:focus, .textarea:focus { border-color: rgba(255,255,255,0.3); }
+.section-task {
+  border-radius: 20px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+}
+.section-task.done {
+  border-color: rgba(52,211,153,0.7);
+  background: rgba(16,185,129,0.08);
+}
+.badge {
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hero-desc { max-width: 780px; line-height: 1.9; }
+.footer-note { line-height: 1.8; }
+.center-box {
+  min-height: 220px;
+  border-radius: 28px;
+  border: 1px dashed rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.02);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+  padding: 20px;
+}
+@media (max-width: 1100px) {
+  .header-grid, .grid-4, .grid-2-1, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .text-3xl { font-size: 34px; }
+}
