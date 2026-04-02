@@ -9,75 +9,35 @@ import {
   RotateCcw,
   Plus,
   Trash2,
-  Pencil,
   Save,
   Target,
   Sparkles,
   TimerReset,
   LogIn,
   LogOut,
+  CalendarDays,
+  Cloud,
 } from "lucide-react";
 import { auth, provider, db } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
-const STORAGE_KEY = "waqti-app-v2";
+const STORAGE_KEY = "waqti-app-v3";
 
-const defaultData = {
-  streak: 0,
-  lastCompletedDate: null,
-  dayKey: "",
-  tasksBySection: [
-    {
-      id: "section-1",
-      title: "من الفجر إلى الظهر",
-      tasks: [
-        { id: "fajr", time: "05:07 - 06:07", label: "صلاة الفجر", done: false },
-        { id: "memorization", time: "06:07 - 08:07", label: "حفظ مع تدبر", done: false },
-        { id: "workout", time: "08:07 - 09:37", label: "رياضة", done: false },
-        { id: "roya", time: "09:37 - 11:37", label: "شغل رؤية ومجتمع", done: false },
-        { id: "auraview-1", time: "11:37 - 12:52", label: "شغل Auraview", done: false },
-      ],
-    },
-    {
-      id: "section-2",
-      title: "من الظهر إلى العصر",
-      tasks: [
-        { id: "dhuhr", time: "12:52 - 13:52", label: "صلاة الظهر", done: false },
-        { id: "auraview-2", time: "13:52 - 16:25", label: "شغل Auraview", done: false },
-      ],
-    },
-    {
-      id: "section-3",
-      title: "من العصر إلى المغرب",
-      tasks: [
-        { id: "asr", time: "16:25 - 17:25", label: "صلاة العصر", done: false },
-        { id: "auraview-3", time: "17:25 - 18:37", label: "شغل Auraview", done: false },
-        { id: "learning", time: "18:37 - 19:11", label: "تعلم / قراءة", done: false },
-      ],
-    },
-    {
-      id: "section-4",
-      title: "من المغرب إلى العشاء",
-      tasks: [
-        { id: "maghrib", time: "19:11 - 20:11", label: "صلاة المغرب", done: false },
-        { id: "quran", time: "20:11 - 20:37", label: "قراءة قرآن", done: false },
-      ],
-    },
-    {
-      id: "section-5",
-      title: "من العشاء إلى الفجر",
-      tasks: [
-        { id: "isha", time: "20:37 - 21:37", label: "صلاة العشاء", done: false },
-        { id: "sleep", time: "21:37 - 04:37 (+1)", label: "نوم", done: false },
-        { id: "light-dhikr", time: "04:37 - 05:07", label: "أذكار / تعلم خفيف", done: false },
-      ],
-    },
-  ],
+const createEmptySections = () => [
+  { id: "section-1", title: "الفجر → الظهر", tasks: [] },
+  { id: "section-2", title: "الظهر → العصر", tasks: [] },
+  { id: "section-3", title: "العصر → المغرب", tasks: [] },
+  { id: "section-4", title: "المغرب → العشاء", tasks: [] },
+  { id: "section-5", title: "العشاء → الفجر", tasks: [] },
+];
+
+const createEmptyPlan = () => ({
+  tasksBySection: createEmptySections(),
   goals: {
-    daily: "إنهاء أهم مهام اليوم بثبات وهدوء",
-    weekly: "الالتزام بالنظام أغلب أيام الأسبوع",
-    yearly: "بناء سنة متوازنة بين العبادة والعمل والتعلّم",
+    daily: "",
+    weekly: "",
+    yearly: "",
   },
   adhkar: {
     morning: [
@@ -92,6 +52,13 @@ const defaultData = {
     ],
   },
   tasbih: 0,
+});
+
+const defaultData = {
+  streak: 0,
+  lastCompletedDate: null,
+  selectedDate: "",
+  plansByDate: {},
 };
 
 function getTodayKey() {
@@ -109,42 +76,108 @@ function isYesterday(currentDate, previousDate) {
   return Math.round(diff) === 1;
 }
 
-function resetDailyState(data) {
+function parseLegacyTime(time = "") {
+  const match = time.match(/(\d{2}:\d{2}).*?(\d{2}:\d{2})/);
   return {
-    ...data,
-    dayKey: getTodayKey(),
-    tasksBySection: data.tasksBySection.map((section) => ({
-      ...section,
-      tasks: section.tasks.map((task) => ({ ...task, done: false })),
-    })),
-    adhkar: {
-      morning: data.adhkar.morning.map((item) => ({ ...item, count: 0 })),
-      evening: data.adhkar.evening.map((item) => ({ ...item, count: 0 })),
+    startTime: match?.[1] || "",
+    endTime: match?.[2] || "",
+  };
+}
+
+function normalizeTask(task) {
+  if (task.startTime || task.endTime) {
+    return {
+      id: task.id || `task-${Date.now()}`,
+      label: task.label || "مهمة",
+      startTime: task.startTime || "",
+      endTime: task.endTime || "",
+      done: !!task.done,
+    };
+  }
+
+  const legacy = parseLegacyTime(task.time || "");
+  return {
+    id: task.id || `task-${Date.now()}`,
+    label: task.label || "مهمة",
+    startTime: legacy.startTime,
+    endTime: legacy.endTime,
+    done: !!task.done,
+  };
+}
+
+function normalizeSections(sections) {
+  const base = createEmptySections();
+  if (!Array.isArray(sections) || !sections.length) return base;
+
+  return sections.map((section, index) => ({
+    id: section.id || `section-${index + 1}`,
+    title: section.title || base[index]?.title || `قسم ${index + 1}`,
+    tasks: Array.isArray(section.tasks) ? section.tasks.map(normalizeTask) : [],
+  }));
+}
+
+function normalizePlan(plan) {
+  const empty = createEmptyPlan();
+  return {
+    tasksBySection: normalizeSections(plan?.tasksBySection),
+    goals: {
+      daily: plan?.goals?.daily || "",
+      weekly: plan?.goals?.weekly || "",
+      yearly: plan?.goals?.yearly || "",
     },
-    tasbih: 0,
+    adhkar: {
+      morning: Array.isArray(plan?.adhkar?.morning) ? plan.adhkar.morning : empty.adhkar.morning,
+      evening: Array.isArray(plan?.adhkar?.evening) ? plan.adhkar.evening : empty.adhkar.evening,
+    },
+    tasbih: typeof plan?.tasbih === "number" ? plan.tasbih : 0,
+  };
+}
+
+function buildInitialData(rawParsed) {
+  const today = getTodayKey();
+  const parsed = rawParsed || {};
+
+  if (parsed.tasksBySection || parsed.goals || parsed.adhkar || typeof parsed.tasbih === "number") {
+    return {
+      streak: parsed.streak || 0,
+      lastCompletedDate: parsed.lastCompletedDate || null,
+      selectedDate: today,
+      plansByDate: {
+        [today]: normalizePlan(parsed),
+      },
+    };
+  }
+
+  const plansByDate = { ...(parsed.plansByDate || {}) };
+  if (!plansByDate[today]) plansByDate[today] = createEmptyPlan();
+
+  const normalizedPlans = Object.fromEntries(
+    Object.entries(plansByDate).map(([date, plan]) => [date, normalizePlan(plan)])
+  );
+
+  return {
+    streak: parsed.streak || 0,
+    lastCompletedDate: parsed.lastCompletedDate || null,
+    selectedDate: parsed.selectedDate || today,
+    plansByDate: normalizedPlans,
   };
 }
 
 function loadState() {
   try {
     const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return resetDailyState(defaultData);
+    if (!raw) return buildInitialData(defaultData);
     const parsed = JSON.parse(raw);
-    const merged = {
-      ...defaultData,
-      ...parsed,
-      goals: { ...defaultData.goals, ...(parsed.goals || {}) },
-      adhkar: {
-        morning: parsed.adhkar?.morning || defaultData.adhkar.morning,
-        evening: parsed.adhkar?.evening || defaultData.adhkar.evening,
-      },
-      tasksBySection: parsed.tasksBySection || defaultData.tasksBySection,
-    };
-    if (merged.dayKey !== getTodayKey()) return resetDailyState(merged);
-    return merged;
+    return buildInitialData(parsed);
   } catch {
-    return resetDailyState(defaultData);
+    return buildInitialData(defaultData);
   }
+}
+
+function formatTaskTime(task) {
+  if (!task.startTime && !task.endTime) return "بدون وقت";
+  if (task.startTime && task.endTime) return `${task.startTime} - ${task.endTime}`;
+  return task.startTime || task.endTime;
 }
 
 function StatCard({ icon: Icon, label, value, sub }) {
@@ -171,6 +204,7 @@ function SectionEditor({ section, onChangeTitle, onAddTask, onUpdateTask, onDele
         <input className="input" value={section.title} onChange={(e) => onChangeTitle(e.target.value)} />
         <button className="btn" onClick={onAddTask}><Plus size={16} /> مهمة</button>
       </div>
+
       <div style={{ display: "grid", gap: 12 }}>
         {section.tasks.map((task) => (
           <div key={task.id} className={`section-task ${task.done ? "done" : ""}`}>
@@ -181,9 +215,39 @@ function SectionEditor({ section, onChangeTitle, onAddTask, onUpdateTask, onDele
               </button>
               <button className="btn btn-danger" onClick={() => onDeleteTask(task.id)}><Trash2 size={16} /></button>
             </div>
-            <div className="grid-2">
-              <input className="input" value={task.label} onChange={(e) => onUpdateTask(task.id, { label: e.target.value })} />
-              <input className="input" dir="ltr" value={task.time} onChange={(e) => onUpdateTask(task.id, { time: e.target.value })} />
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <input
+                className="input"
+                value={task.label}
+                onChange={(e) => onUpdateTask(task.id, { label: e.target.value })}
+                placeholder="اسم المهمة"
+              />
+
+              <div className="grid-2">
+                <div>
+                  <div className="text-sm muted mb-2">من</div>
+                  <input
+                    className="input"
+                    type="time"
+                    dir="ltr"
+                    value={task.startTime || ""}
+                    onChange={(e) => onUpdateTask(task.id, { startTime: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <div className="text-sm muted mb-2">إلى</div>
+                  <input
+                    className="input"
+                    type="time"
+                    dir="ltr"
+                    value={task.endTime || ""}
+                    onChange={(e) => onUpdateTask(task.id, { endTime: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="text-sm muted">{formatTaskTime(task)}</div>
             </div>
           </div>
         ))}
@@ -228,32 +292,64 @@ export default function WaqtiApp() {
   const [data, setData] = useState(() => loadState());
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("idle");
+
+  const selectedDate = data.selectedDate || getTodayKey();
+  const currentPlan = data.plansByDate?.[selectedDate] || createEmptyPlan();
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser || null);
+
       if (currentUser) {
-        const ref = doc(db, "users", currentUser.uid);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const remote = snap.data();
-          setData(remote.dayKey !== getTodayKey() ? resetDailyState(remote) : remote);
+        try {
+          const ref = doc(db, "users", currentUser.uid);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            setData(buildInitialData(snap.data()));
+          }
+        } catch (error) {
+          console.error("Load user data error:", error);
         }
       }
+
       setReady(true);
     });
+
     return () => unsub();
   }, []);
 
   useEffect(() => {
     if (!ready) return;
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if (user) {
-      setDoc(doc(db, "users", user.uid), data, { merge: true });
-    }
+
+    const saveToCloud = async () => {
+      if (!user) return;
+      try {
+        setSyncStatus("saving");
+        await setDoc(doc(db, "users", user.uid), data, { merge: true });
+        setSyncStatus("saved");
+      } catch (error) {
+        console.error("Firestore save error:", error);
+        setSyncStatus("error");
+      }
+    };
+
+    saveToCloud();
   }, [data, user, ready]);
 
-  const allTasks = useMemo(() => data.tasksBySection.flatMap((section) => section.tasks), [data.tasksBySection]);
+  const updateCurrentPlan = (updater) => {
+    setData((prev) => ({
+      ...prev,
+      plansByDate: {
+        ...prev.plansByDate,
+        [prev.selectedDate]: updater(prev.plansByDate?.[prev.selectedDate] || createEmptyPlan()),
+      },
+    }));
+  };
+
+  const allTasks = useMemo(() => currentPlan.tasksBySection.flatMap((section) => section.tasks), [currentPlan]);
   const completedTasks = useMemo(() => allTasks.filter((task) => task.done).length, [allTasks]);
   const progress = allTasks.length ? Math.round((completedTasks / allTasks.length) * 100) : 0;
   const allDone = allTasks.length > 0 && completedTasks === allTasks.length;
@@ -261,17 +357,28 @@ export default function WaqtiApp() {
   useEffect(() => {
     if (!allDone) return;
     setData((prev) => {
-      if (prev.lastCompletedDate === prev.dayKey) return prev;
+      if (prev.lastCompletedDate === prev.selectedDate) return prev;
       let nextStreak = 1;
-      if (prev.lastCompletedDate && isYesterday(prev.dayKey, prev.lastCompletedDate)) nextStreak = prev.streak + 1;
-      return { ...prev, streak: nextStreak, lastCompletedDate: prev.dayKey };
+      if (prev.lastCompletedDate && isYesterday(prev.selectedDate, prev.lastCompletedDate)) nextStreak = prev.streak + 1;
+      return { ...prev, streak: nextStreak, lastCompletedDate: prev.selectedDate };
     });
   }, [allDone]);
 
-  const updateSection = (sectionId, updater) => {
+  const setSelectedDate = (date) => {
     setData((prev) => ({
       ...prev,
-      tasksBySection: prev.tasksBySection.map((section) => section.id === sectionId ? updater(section) : section),
+      selectedDate: date,
+      plansByDate: {
+        ...prev.plansByDate,
+        [date]: prev.plansByDate?.[date] ? normalizePlan(prev.plansByDate[date]) : createEmptyPlan(),
+      },
+    }));
+  };
+
+  const updateSection = (sectionId, updater) => {
+    updateCurrentPlan((plan) => ({
+      ...plan,
+      tasksBySection: plan.tasksBySection.map((section) => section.id === sectionId ? updater(section) : section),
     }));
   };
 
@@ -287,7 +394,16 @@ export default function WaqtiApp() {
 
   const addTask = (sectionId) => updateSection(sectionId, (section) => ({
     ...section,
-    tasks: [...section.tasks, { id: `${sectionId}-${Date.now()}`, label: "مهمة جديدة", time: "00:00 - 00:00", done: false }],
+    tasks: [
+      ...section.tasks,
+      {
+        id: `${sectionId}-${Date.now()}`,
+        label: "مهمة جديدة",
+        startTime: "",
+        endTime: "",
+        done: false,
+      },
+    ],
   }));
 
   const deleteTask = (sectionId, taskId) => updateSection(sectionId, (section) => ({
@@ -295,19 +411,22 @@ export default function WaqtiApp() {
     tasks: section.tasks.filter((task) => task.id !== taskId),
   }));
 
-  const resetTasksOnly = () => setData((prev) => ({
-    ...prev,
-    tasksBySection: prev.tasksBySection.map((section) => ({
+  const resetTasksOnly = () => updateCurrentPlan((plan) => ({
+    ...plan,
+    tasksBySection: plan.tasksBySection.map((section) => ({
       ...section,
       tasks: section.tasks.map((task) => ({ ...task, done: false })),
     })),
   }));
 
-  const updateGoal = (key, value) => setData((prev) => ({ ...prev, goals: { ...prev.goals, [key]: value } }));
+  const updateGoal = (key, value) => updateCurrentPlan((plan) => ({
+    ...plan,
+    goals: { ...plan.goals, [key]: value },
+  }));
 
-  const updateDhikrGroup = (group, updater) => setData((prev) => ({
-    ...prev,
-    adhkar: { ...prev.adhkar, [group]: updater(prev.adhkar[group]) },
+  const updateDhikrGroup = (group, updater) => updateCurrentPlan((plan) => ({
+    ...plan,
+    adhkar: { ...plan.adhkar, [group]: updater(plan.adhkar[group]) },
   }));
 
   const incrementDhikr = (group, id) => updateDhikrGroup(group, (items) => items.map((item) => item.id === id ? { ...item, count: item.count + 1 } : item));
@@ -317,8 +436,22 @@ export default function WaqtiApp() {
   const updateDhikrText = (group, id, text) => updateDhikrGroup(group, (items) => items.map((item) => item.id === id ? { ...item, text } : item));
   const updateDhikrTarget = (group, id, target) => updateDhikrGroup(group, (items) => items.map((item) => item.id === id ? { ...item, target: Math.max(1, target) } : item));
 
-  const completedMorning = data.adhkar.morning.filter((item) => item.count >= item.target).length;
-  const completedEvening = data.adhkar.evening.filter((item) => item.count >= item.target).length;
+  const completedMorning = currentPlan.adhkar.morning.filter((item) => item.count >= item.target).length;
+  const completedEvening = currentPlan.adhkar.evening.filter((item) => item.count >= item.target).length;
+
+  const handleLogout = async () => {
+    try {
+      if (user) {
+        setSyncStatus("saving");
+        await setDoc(doc(db, "users", user.uid), data, { merge: true });
+      }
+      await signOut(auth);
+      setSyncStatus("idle");
+    } catch (error) {
+      console.error("Logout sync error:", error);
+      setSyncStatus("error");
+    }
+  };
 
   return (
     <div className="page">
@@ -330,56 +463,71 @@ export default function WaqtiApp() {
                 <p className="text-sm muted mb-4">منصة وقتي</p>
                 <h1 className="title text-3xl font-black">وقتي</h1>
                 <p className="hero-desc text-sm muted mt-3">
-                  منصة عربية حديثة لإدارة اليوم بين الصلاة والانضباط، مع أهداف يومية وأسبوعية وسنوية، أذكار الصباح والمساء، ومسبحة إلكترونية — وكل شيء محفوظ على حسابك.
+                  منصة عربية حديثة لإدارة اليوم بين الصلاة والانضباط، مع تخطيط حقيقي حسب التاريخ، وأهداف يومية وأسبوعية وسنوية، وأذكار الصباح والمساء، ومسبحة إلكترونية.
                 </p>
               </div>
+
               <div className="flex gap-2">
-              {user ? (
-  <div className="flex items-center gap-3 px-3 py-2 rounded-2xl" style={{background: "rgba(255,255,255,0.05)"}}>
-    <img 
-      src={user.photoURL} 
-      alt="user" 
-      className="w-8 h-8 rounded-full"
-    />
-    <span className="text-sm font-medium">
-      {user.displayName}
-    </span>
-    <button 
-      onClick={() => signOut(auth)} 
-      className="btn"
-    >
-      خروج
-    </button>
-  </div>
-) : (
-  <button 
-    className="btn btn-primary" 
-    onClick={() => signInWithPopup(auth, provider)}
-  >
-    <LogIn size={16} /> تسجيل دخول بجوجل
-  </button>
-)}
+                {user ? (
+                  <div className="flex items-center gap-3 px-3 py-2 rounded-2xl" style={{ background: "rgba(255,255,255,0.05)" }}>
+                    <img src={user.photoURL} alt="user" className="w-8 h-8 rounded-full" />
+                    <div>
+                      <div className="text-sm font-medium">{user.displayName}</div>
+                      <div className="text-xs muted">
+                        {syncStatus === "saving" && "جاري الحفظ..."}
+                        {syncStatus === "saved" && "تم الحفظ"}
+                        {syncStatus === "error" && "فشل الحفظ"}
+                      </div>
+                    </div>
+                    <button onClick={handleLogout} className="btn"><LogOut size={16} /> خروج</button>
+                  </div>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => signInWithPopup(auth, provider)}>
+                    <LogIn size={16} /> تسجيل دخول بجوجل
+                  </button>
+                )}
               </div>
             </div>
           </div>
+
           <div className="card p-6">
-            <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <span className="text-sm muted">إنجاز اليوم</span>
               <span className="text-2xl font-bold">{progress}%</span>
             </div>
             <div className="progress-wrap"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <div className="badge btn-soft"><Flame size={16} /> الاستمرارية: {data.streak}</div>
-              <button className="btn" onClick={resetTasksOnly}><RotateCcw size={16} /> تصفير المهام</button>
+              <button className="btn" onClick={resetTasksOnly}><RotateCcw size={16} /> تصفير مهام هذا اليوم</button>
             </div>
           </div>
         </motion.div>
 
+        <div className="card p-5 mb-6">
+          <div className="mb-4 flex items-center gap-2"><CalendarDays size={18} /><h2 className="text-xl font-bold">التخطيط حسب التاريخ</h2></div>
+          <div className="grid-2">
+            <div>
+              <div className="text-sm muted mb-2">اختر اليوم</div>
+              <input
+                className="input"
+                type="date"
+                dir="ltr"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <div className="text-sm muted mb-2">حالة المزامنة</div>
+              <div className="badge"><Cloud size={16} /> {user ? (syncStatus === "saved" ? "الحساب متزامن" : syncStatus === "saving" ? "جاري رفع التعديلات" : syncStatus === "error" ? "في مشكلة بالحفظ" : "جاهز") : "أنت تعمل محليًا حتى تسجل الدخول"}</div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid-4 mb-6">
-          <StatCard icon={Target} label="المهام المكتملة" value={`${completedTasks}/${allTasks.length}`} sub="يمكنك تعديل كل مهمة ووقتها" />
-          <StatCard icon={Sparkles} label="أذكار الصباح" value={`${completedMorning}/${data.adhkar.morning.length}`} sub="عداد تكرار لكل ذكر" />
-          <StatCard icon={Sparkles} label="أذكار المساء" value={`${completedEvening}/${data.adhkar.evening.length}`} sub="إضافة وتعديل الأذكار متاح" />
-          <StatCard icon={TimerReset} label="المسبحة الإلكترونية" value={data.tasbih} sub="عداد نقر بسيط وسريع" />
+          <StatCard icon={Target} label="المهام المكتملة" value={`${completedTasks}/${allTasks.length}`} sub="كل يوم له خطته الخاصة" />
+          <StatCard icon={Sparkles} label="أذكار الصباح" value={`${completedMorning}/${currentPlan.adhkar.morning.length}`} sub="عداد تكرار لكل ذكر" />
+          <StatCard icon={Sparkles} label="أذكار المساء" value={`${completedEvening}/${currentPlan.adhkar.evening.length}`} sub="إضافة وتعديل الأذكار متاح" />
+          <StatCard icon={TimerReset} label="المسبحة الإلكترونية" value={currentPlan.tasbih} sub="عداد نقر بسيط وسريع" />
         </div>
 
         <div className="grid-2-1 mb-6">
@@ -388,35 +536,36 @@ export default function WaqtiApp() {
             <div className="grid-3">
               <div>
                 <div className="text-sm muted mb-4">الهدف اليومي</div>
-                <textarea className="textarea" rows="5" value={data.goals.daily} onChange={(e) => updateGoal("daily", e.target.value)} />
+                <textarea className="textarea" rows="5" value={currentPlan.goals.daily} onChange={(e) => updateGoal("daily", e.target.value)} />
               </div>
               <div>
                 <div className="text-sm muted mb-4">الهدف الأسبوعي</div>
-                <textarea className="textarea" rows="5" value={data.goals.weekly} onChange={(e) => updateGoal("weekly", e.target.value)} />
+                <textarea className="textarea" rows="5" value={currentPlan.goals.weekly} onChange={(e) => updateGoal("weekly", e.target.value)} />
               </div>
               <div>
                 <div className="text-sm muted mb-4">الهدف السنوي</div>
-                <textarea className="textarea" rows="5" value={data.goals.yearly} onChange={(e) => updateGoal("yearly", e.target.value)} />
+                <textarea className="textarea" rows="5" value={currentPlan.goals.yearly} onChange={(e) => updateGoal("yearly", e.target.value)} />
               </div>
             </div>
           </div>
+
           <div className="card p-5">
-            <div className="mb-4 flex items-center gap-2"><Pencil size={18} /><h2 className="text-xl font-bold">المسبحة الإلكترونية</h2></div>
+            <div className="mb-4 flex items-center gap-2"><Save size={18} /><h2 className="text-xl font-bold">المسبحة الإلكترونية</h2></div>
             <div className="center-box">
               <div className="text-sm muted">العدد الحالي</div>
-              <div className="text-6xl font-black">{data.tasbih}</div>
+              <div className="text-6xl font-black">{currentPlan.tasbih}</div>
               <div className="mt-4 flex flex-wrap justify-center gap-3">
-                <button className="btn btn-primary" onClick={() => setData((prev) => ({ ...prev, tasbih: prev.tasbih + 1 }))}>تسبيح +1</button>
-                <button className="btn" onClick={() => setData((prev) => ({ ...prev, tasbih: 0 }))}>تصفير</button>
+                <button className="btn btn-primary" onClick={() => updateCurrentPlan((plan) => ({ ...plan, tasbih: plan.tasbih + 1 }))}>تسبيح +1</button>
+                <button className="btn" onClick={() => updateCurrentPlan((plan) => ({ ...plan, tasbih: 0 }))}>تصفير</button>
               </div>
             </div>
           </div>
         </div>
 
         <div className="mb-6">
-          <div className="mb-4 flex items-center gap-2"><Save size={18} /><h2 className="text-2xl font-bold">جدول اليوم القابل للتعديل</h2></div>
+          <div className="mb-4 flex items-center gap-2"><Save size={18} /><h2 className="text-2xl font-bold">خطة اليوم القابلة للتعديل</h2></div>
           <div className="grid-3">
-            {data.tasksBySection.map((section) => (
+            {currentPlan.tasksBySection.map((section) => (
               <SectionEditor
                 key={section.id}
                 section={section}
@@ -433,7 +582,7 @@ export default function WaqtiApp() {
         <div className="grid-2">
           <DhikrCard
             title="أذكار الصباح"
-            items={data.adhkar.morning}
+            items={currentPlan.adhkar.morning}
             onIncrement={(id) => incrementDhikr("morning", id)}
             onReset={() => resetDhikr("morning")}
             onTextChange={(id, text) => updateDhikrText("morning", id, text)}
@@ -443,7 +592,7 @@ export default function WaqtiApp() {
           />
           <DhikrCard
             title="أذكار المساء"
-            items={data.adhkar.evening}
+            items={currentPlan.adhkar.evening}
             onIncrement={(id) => incrementDhikr("evening", id)}
             onReset={() => resetDhikr("evening")}
             onTextChange={(id, text) => updateDhikrText("evening", id, text)}
@@ -454,7 +603,8 @@ export default function WaqtiApp() {
         </div>
 
         <div className="card p-5 mt-8 footer-note text-sm muted">
-          كل البيانات تُحفَظ محليًا على حسابك عند تسجيل الدخول. إذا فتحت الموقع من جهاز آخر بنفس الحساب، سترى نفس الأهداف والمهام والأذكار والمسبحة.
+          الوقت كالسيف إن لم تقطعه قطعك،
+فابدأ اليوم… فالغد لا يُبنى بالتأجيل.
         </div>
       </div>
     </div>
