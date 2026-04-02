@@ -335,7 +335,7 @@ export default function WaqtiApp() {
               </div>
               <div className="flex gap-2">
               {user ? (
-  <div className="flex items-center gap-3 bg-zinc-100 px-3 py-2 rounded-2xl"
+  <div className="flex items-center gap-3 px-3 py-2 rounded-2xl" style={{ background: "rgba(255,255,255,0.05)" }}
     <img 
       src={user.photoURL} 
       alt="user" 
