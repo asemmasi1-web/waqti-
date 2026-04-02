@@ -334,11 +334,31 @@ export default function WaqtiApp() {
                 </p>
               </div>
               <div className="flex gap-2">
-                {user ? (
-                  <button className="btn" onClick={() => signOut(auth)}><LogOut size={16} /> تسجيل خروج</button>
-                ) : (
-                  <button className="btn btn-primary" onClick={() => signInWithPopup(auth, provider)}><LogIn size={16} /> تسجيل دخول بجوجل</button>
-                )}
+              {user ? (
+  <div className="flex items-center gap-3 bg-zinc-100 px-3 py-2 rounded-2xl"
+    <img 
+      src={user.photoURL} 
+      alt="user" 
+      className="w-8 h-8 rounded-full"
+    />
+    <span className="text-sm font-medium">
+      {user.displayName}
+    </span>
+    <button 
+      onClick={() => signOut(auth)} 
+      className="btn"
+    >
+      خروج
+    </button>
+  </div>
+) : (
+  <button 
+    className="btn btn-primary" 
+    onClick={() => signInWithPopup(auth, provider)}
+  >
+    <LogIn size={16} /> تسجيل دخول بجوجل
+  </button>
+)}
               </div>
             </div>
           </div>
@@ -434,7 +454,7 @@ export default function WaqtiApp() {
         </div>
 
         <div className="card p-5 mt-8 footer-note text-sm muted">
-          كل البيانات تُحفَظ محليًا وفي Firestore على حسابك عند تسجيل الدخول. إذا فتحت الموقع من جهاز آخر بنفس الحساب، سترى نفس الأهداف والمهام والأذكار والمسبحة.
+          كل البيانات تُحفَظ محليًا على حسابك عند تسجيل الدخول. إذا فتحت الموقع من جهاز آخر بنفس الحساب، سترى نفس الأهداف والمهام والأذكار والمسبحة.
         </div>
       </div>
     </div>
