@@ -20,9 +20,9 @@ import {
 } from "lucide-react";
 import { auth, provider, db } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, waitForPendingWrites } from "firebase/firestore";
 
-const STORAGE_KEY = "waqti-app-v3";
+const STORAGE_KEY = "waqti-app-v4";
 
 const createEmptySections = () => [
   { id: "section-1", title: "الفجر → الظهر", tasks: [] },
@@ -301,19 +301,26 @@ export default function WaqtiApp() {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser || null);
 
-      if (currentUser) {
-        try {
+      try {
+        if (currentUser) {
           const ref = doc(db, "users", currentUser.uid);
           const snap = await getDoc(ref);
+
           if (snap.exists()) {
             setData(buildInitialData(snap.data()));
+          } else {
+            const localData = loadState();
+            await setDoc(ref, localData, { merge: true });
+            await waitForPendingWrites(db);
+            setData(localData);
           }
-        } catch (error) {
-          console.error("Load user data error:", error);
         }
+      } catch (error) {
+        console.error("Load user data error:", error);
+        setSyncStatus("error");
+      } finally {
+        setReady(true);
       }
-
-      setReady(true);
     });
 
     return () => unsub();
@@ -324,19 +331,26 @@ export default function WaqtiApp() {
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 
+    let cancelled = false;
+
     const saveToCloud = async () => {
       if (!user) return;
       try {
         setSyncStatus("saving");
         await setDoc(doc(db, "users", user.uid), data, { merge: true });
-        setSyncStatus("saved");
+        await waitForPendingWrites(db);
+        if (!cancelled) setSyncStatus("saved");
       } catch (error) {
         console.error("Firestore save error:", error);
-        setSyncStatus("error");
+        if (!cancelled) setSyncStatus("error");
       }
     };
 
     saveToCloud();
+
+    return () => {
+      cancelled = true;
+    };
   }, [data, user, ready]);
 
   const updateCurrentPlan = (updater) => {
@@ -444,6 +458,7 @@ export default function WaqtiApp() {
       if (user) {
         setSyncStatus("saving");
         await setDoc(doc(db, "users", user.uid), data, { merge: true });
+        await waitForPendingWrites(db);
       }
       await signOut(auth);
       setSyncStatus("idle");
@@ -604,7 +619,7 @@ export default function WaqtiApp() {
 
         <div className="card p-5 mt-8 footer-note text-sm muted">
           الوقت كالسيف إن لم تقطعه قطعك،
-فابدأ اليوم… فالغد لا يُبنى بالتأجيل.
+          فابدأ اليوم… فالغد لا يُبنى بالتأجيل.
         </div>
       </div>
     </div>
